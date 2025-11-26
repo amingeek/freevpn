@@ -1,4 +1,4 @@
-// connectivity_final_v2.go - Fixed Progress Bar + Git Integration
+// connectivity_final_v3.go - Fixed Git Push (Non-blocking + Better Error Handling)
 package main
 
 import (
@@ -221,7 +221,7 @@ func printBox(text string, align string) {
 }
 
 // ╔════════════════════════════════════════════════════════════════╗
-// ║                    GIT PUSH HANDLER                            ║
+// ║                    IMPROVED GIT PUSH                           ║
 // ╚════════════════════════════════════════════════════════════════╝
 
 func handleGitPush() {
@@ -233,9 +233,12 @@ func handleGitPush() {
 	fmt.Println("  📋 Git Operations:")
 	fmt.Println()
 
-	// git add .
+	// ===== git add . =====
 	fmt.Print("  ⏳ Running: git add .")
 	cmd := exec.Command("git", "add", ".")
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	err := cmd.Run()
 	if err != nil {
 		fmt.Printf("  ❌ Error: %v\n", err)
@@ -243,25 +246,65 @@ func handleGitPush() {
 	}
 	fmt.Println("  ✓ Done")
 
-	// git commit
+	// ===== git commit =====
 	fmt.Print("  ⏳ Running: git commit -m 'update bisub'")
 	cmd = exec.Command("git", "commit", "-m", "update bisub")
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	err = cmd.Run()
 	if err != nil {
-		fmt.Printf("  ⚠️  Info: %v\n", err)
+		// Commit error is often just "nothing to commit" - not fatal
+		fmt.Println("  ⚠️  (nothing to commit or already committed)")
 	} else {
 		fmt.Println("  ✓ Done")
 	}
 
-	// git push
+	// ===== git push (WITH TIMEOUT & ERROR HANDLING) =====
 	fmt.Print("  ⏳ Running: git push")
-	cmd = exec.Command("git", "push")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("  ❌ Error: %s\n", string(output))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd = exec.CommandContext(ctx, "git", "push")
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Run()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			fmt.Printf("  ❌ Error: %v\n", err)
+			fmt.Println()
+			fmt.Println("  TROUBLESHOOTING:")
+			fmt.Println("  ├─ Check: git status")
+			fmt.Println("  ├─ Check: git remote -v")
+			fmt.Println("  ├─ Try manually: git push")
+			fmt.Println("  └─ If still stuck, use: CTRL+C and check network")
+			return
+		}
+		fmt.Println("  ✓ Done")
+
+	case <-ctx.Done():
+		fmt.Println("  ⚠️  TIMEOUT (30 seconds)")
+		fmt.Println()
+		fmt.Println("  This usually means:")
+		fmt.Println("  ├─ Network is slow")
+		fmt.Println("  ├─ SSH key needs passphrase (not cached)")
+		fmt.Println("  ├─ GitHub authentication issue")
+		fmt.Println("  └─ Large files being pushed")
+		fmt.Println()
+		fmt.Println("  SOLUTION:")
+		fmt.Println("  1. Open new terminal")
+		fmt.Println("  2. Run: git push")
+		fmt.Println("  3. Complete authentication there")
+		fmt.Println("  4. Try again in app")
 		return
 	}
-	fmt.Println("  ✓ Done")
 
 	fmt.Println()
 	fmt.Println("  ✓ All files pushed to GitHub!")
@@ -333,7 +376,6 @@ func showProgressBarFixed(current, total int64, speed float64) {
 	filled := int(percent / 2)
 	empty := 50 - filled
 
-	// Only update if percentage changed (minimize flicker)
 	if percent == progressState.lastPercent && current != int64(total) {
 		return
 	}
@@ -347,7 +389,6 @@ func showProgressBarFixed(current, total int64, speed float64) {
 		total,
 		speed)
 
-	// Carriage return to overwrite same line
 	if progressState.printed {
 		fmt.Print("\r")
 	}
@@ -357,7 +398,6 @@ func showProgressBarFixed(current, total int64, speed float64) {
 	progressState.lastCurrent = current
 	progressState.printed = true
 
-	// Add newline at end
 	if current == total {
 		fmt.Println()
 		progressState.printed = false
