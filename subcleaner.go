@@ -1,4 +1,4 @@
-// connectivity_final.go - Final version with English CLI and Fixed Progress Bar
+// connectivity_final_v2.go - Fixed Progress Bar + Git Integration
 package main
 
 import (
@@ -12,23 +12,25 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
+	"os/exec"
 	"runtime"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
-
 	"golang.org/x/term"
+	"syscall"
 )
 
 const (
-	QUICK_TEST  = 0
-	FULL_TEST   = 1
-	BENCH_MODE  = 2
-	INTERACTIVE = 3
-	EXIT        = 4
+	MAIN_MENU       = 0
+	QUICK_TEST      = 1
+	FULL_TEST       = 2
+	BENCH_MODE      = 3
+	INTERACTIVE     = 4
+	GIT_PUSH        = 5
+	EXIT            = 6
 )
 
 type Config struct {
@@ -84,13 +86,20 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	for {
-		choice := showMenuBeautiful()
+		choice := showMainMenu()
 		if choice == EXIT {
 			clearScreen()
 			fmt.Println()
 			printBox("Goodbye! 👋", "center")
 			fmt.Println()
 			break
+		}
+
+		if choice == GIT_PUSH {
+			handleGitPush()
+			fmt.Print("\nPress ENTER to continue...")
+			bufio.NewReader(os.Stdin).ReadString('\n')
+			continue
 		}
 
 		cfg := Config{
@@ -112,17 +121,16 @@ func main() {
 			runInteractiveMode(&cfg)
 		}
 
-		fmt.Print("\n")
-		fmt.Println("  Press ENTER to continue...")
+		fmt.Print("\nPress ENTER to continue...")
 		bufio.NewReader(os.Stdin).ReadString('\n')
 	}
 }
 
 // ╔════════════════════════════════════════════════════════════════╗
-// ║                    BEAUTIFUL MENU                              ║
+// ║                    MAIN MENU                                   ║
 // ╚════════════════════════════════════════════════════════════════╝
 
-func showMenuBeautiful() int {
+func showMainMenu() int {
 	clearScreen()
 
 	menuItems := []struct {
@@ -134,6 +142,7 @@ func showMenuBeautiful() int {
 		{"📦", "Full Test", "Complete test (subscription file)"},
 		{"⚙️ ", "Benchmark", "Performance comparison"},
 		{"🎮", "Interactive", "Custom settings mode"},
+		{"🚀", "Git Push", "Commit and push to GitHub"},
 		{"❌", "Exit", "Exit application"},
 	}
 
@@ -142,7 +151,6 @@ func showMenuBeautiful() int {
 	for {
 		clearScreen()
 
-		// Header
 		fmt.Println("  ╔═══════════════════════════════════════════════════════════════╗")
 		fmt.Println("  ║                                                               ║")
 		fmt.Println("  ║      🔥 CONNECTIVITY TESTER - MAX PERFORMANCE (FINAL) 🔥     ║")
@@ -153,7 +161,7 @@ func showMenuBeautiful() int {
 		fmt.Println("  ╚═══════════════════════════════════════════════════════════════╝")
 
 		fmt.Println()
-		fmt.Println("  SELECT TEST MODE (↑ ↓ + ENTER):")
+		fmt.Println("  SELECT MODE (↑ ↓ + ENTER):")
 		fmt.Println()
 
 		for i, item := range menuItems {
@@ -177,7 +185,20 @@ func showMenuBeautiful() int {
 		} else if key == "down" {
 			selectedIndex = (selectedIndex + 1) % len(menuItems)
 		} else if key == "enter" {
-			return selectedIndex
+			switch selectedIndex {
+			case 0:
+				return QUICK_TEST
+			case 1:
+				return FULL_TEST
+			case 2:
+				return BENCH_MODE
+			case 3:
+				return INTERACTIVE
+			case 4:
+				return GIT_PUSH
+			case 5:
+				return EXIT
+			}
 		} else if key == "q" {
 			return EXIT
 		}
@@ -199,7 +220,54 @@ func printBox(text string, align string) {
 	fmt.Println()
 }
 
-// readArrowKey - Read arrow keys
+// ╔════════════════════════════════════════════════════════════════╗
+// ║                    GIT PUSH HANDLER                            ║
+// ╚════════════════════════════════════════════════════════════════╝
+
+func handleGitPush() {
+	clearScreen()
+	fmt.Println()
+	printBox("🚀 GIT PUSH", "center")
+
+	fmt.Println()
+	fmt.Println("  📋 Git Operations:")
+	fmt.Println()
+
+	// git add .
+	fmt.Print("  ⏳ Running: git add .")
+	cmd := exec.Command("git", "add", ".")
+	err := cmd.Run()
+	if err != nil {
+		fmt.Printf("  ❌ Error: %v\n", err)
+		return
+	}
+	fmt.Println("  ✓ Done")
+
+	// git commit
+	fmt.Print("  ⏳ Running: git commit -m 'update bisub'")
+	cmd = exec.Command("git", "commit", "-m", "update bisub")
+	err = cmd.Run()
+	if err != nil {
+		fmt.Printf("  ⚠️  Info: %v\n", err)
+	} else {
+		fmt.Println("  ✓ Done")
+	}
+
+	// git push
+	fmt.Print("  ⏳ Running: git push")
+	cmd = exec.Command("git", "push")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("  ❌ Error: %s\n", string(output))
+		return
+	}
+	fmt.Println("  ✓ Done")
+
+	fmt.Println()
+	fmt.Println("  ✓ All files pushed to GitHub!")
+	fmt.Println()
+}
+
 func readArrowKey() string {
 	oldState, err := term.MakeRaw(int(syscall.Stdin))
 	if err != nil {
@@ -244,12 +312,19 @@ func readSimpleInput() string {
 }
 
 // ╔════════════════════════════════════════════════════════════════╗
-// ║              FIXED PROGRESS BAR                               ║
+// ║              FIXED PROGRESS BAR - SINGLE LINE                  ║
 // ╚════════════════════════════════════════════════════════════════╝
 
-var lastProgressLength int = 0
+type ProgressState struct {
+	lastPercent   float64
+	lastCurrent   int64
+	printed       bool
+	progressWidth int
+}
 
-func showProgressBar(current, total int64, speed float64) {
+var progressState = ProgressState{progressWidth: 0}
+
+func showProgressBarFixed(current, total int64, speed float64) {
 	if total == 0 {
 		return
 	}
@@ -258,7 +333,11 @@ func showProgressBar(current, total int64, speed float64) {
 	filled := int(percent / 2)
 	empty := 50 - filled
 
-	// Build progress string
+	// Only update if percentage changed (minimize flicker)
+	if percent == progressState.lastPercent && current != int64(total) {
+		return
+	}
+
 	progressStr := fmt.Sprintf(
 		"  [%s%s] %5.1f%% (%d/%d) | %.1f tests/sec",
 		strings.Repeat("█", filled),
@@ -268,19 +347,22 @@ func showProgressBar(current, total int64, speed float64) {
 		total,
 		speed)
 
-	// Pad with spaces to clear previous content
-	if len(progressStr) < lastProgressLength {
-		progressStr += strings.Repeat(" ", lastProgressLength-len(progressStr))
+	// Carriage return to overwrite same line
+	if progressState.printed {
+		fmt.Print("\r")
 	}
-	lastProgressLength = len(progressStr)
+	fmt.Print(progressStr)
 
-	fmt.Printf("\r%s", progressStr)
-}
+	progressState.lastPercent = percent
+	progressState.lastCurrent = current
+	progressState.printed = true
 
-func clearProgressBar() {
-	if lastProgressLength > 0 {
-		fmt.Printf("\r%s\r", strings.Repeat(" ", lastProgressLength))
-		lastProgressLength = 0
+	// Add newline at end
+	if current == total {
+		fmt.Println()
+		progressState.printed = false
+		progressState.lastPercent = 0
+		progressState.lastCurrent = 0
 	}
 }
 
@@ -312,7 +394,7 @@ func runQuickTest(cfg *Config) {
 	fmt.Printf("  ⏱️  Timeout:          %v\n", cfg.timeout)
 	fmt.Println()
 
-	_ = runTestsWithProgress(cfg, testCases)
+	_ = runTestsWithProgressFixed(cfg, testCases)
 }
 
 // ╔════════════════════════════════════════════════════════════════╗
@@ -339,8 +421,7 @@ func runFullTest(cfg *Config) {
 
 	allLinks := fetchAndExtractLinksConcurrent(lines)
 
-	clearProgressBar()
-	fmt.Printf("  ✓ Unique links:     %d\n\n", len(allLinks))
+	fmt.Printf("  ✓ Unique links:      %d\n\n", len(allLinks))
 	fmt.Println("  🔍 Testing connections...\n")
 
 	testCases := make([]struct {
@@ -360,7 +441,7 @@ func runFullTest(cfg *Config) {
 		}
 	}
 
-	results := runTestsWithProgress(cfg, testCases)
+	results := runTestsWithProgressFixed(cfg, testCases)
 	saveConfigsByType(results)
 }
 
@@ -405,7 +486,7 @@ func runBenchmarkMode(cfg *Config) {
 		start := time.Now()
 		stats = TestStats{startTime: start}
 
-		_ = runTestsWithProgress(cfg, testCases)
+		_ = runTestsWithProgressFixed(cfg, testCases)
 
 		duration := time.Since(start)
 		success := atomic.LoadInt64(&stats.success)
@@ -483,15 +564,15 @@ func runInteractiveMode(cfg *Config) {
 		}
 	}
 
-	results := runTestsWithProgress(cfg, testCases)
+	results := runTestsWithProgressFixed(cfg, testCases)
 	saveConfigsByType(results)
 }
 
 // ╔════════════════════════════════════════════════════════════════╗
-// ║         TEST EXECUTION WITH FIXED PROGRESS BAR                 ║
+// ║       TEST EXECUTION WITH FIXED SINGLE-LINE PROGRESS           ║
 // ╚════════════════════════════════════════════════════════════════╝
 
-func runTestsWithProgress(cfg *Config, testCases []struct {
+func runTestsWithProgressFixed(cfg *Config, testCases []struct {
 	name string
 	host string
 	port string
@@ -500,6 +581,7 @@ func runTestsWithProgress(cfg *Config, testCases []struct {
 		startTime: time.Now(),
 		total:     int64(len(testCases)),
 	}
+	progressState = ProgressState{progressWidth: 0}
 
 	jobs := make(chan struct {
 		name string
@@ -529,7 +611,6 @@ func runTestsWithProgress(cfg *Config, testCases []struct {
 
 	var allResults []TestResult
 	processedCount := int64(0)
-	lastUpdate := int64(0)
 	startTime := time.Now()
 
 	go func() {
@@ -556,15 +637,11 @@ func runTestsWithProgress(cfg *Config, testCases []struct {
 
 		allResults = append(allResults, result)
 
-		if processedCount-lastUpdate >= 1 || processedCount == int64(len(testCases)) {
-			elapsed := time.Since(startTime).Seconds()
-			speed := float64(processedCount) / elapsed
-			showProgressBar(processedCount, int64(len(testCases)), speed)
-			lastUpdate = processedCount
-		}
+		elapsed := time.Since(startTime).Seconds()
+		speed := float64(processedCount) / elapsed
+		showProgressBarFixed(processedCount, int64(len(testCases)), speed)
 	}
 
-	clearProgressBar()
 	fmt.Println()
 	printSummary()
 
