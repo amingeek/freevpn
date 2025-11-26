@@ -1,4 +1,4 @@
-// connectivity_ultimate.go - نسخه نهایی با Arrow Keys و بیشتر Concurrency
+// connectivity_final.go - Final version with English CLI and Fixed Progress Bar
 package main
 
 import (
@@ -13,12 +13,14 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
-	"golang.org/x/term"
 	"syscall"
+	"time"
+
+	"golang.org/x/term"
 )
 
 const (
@@ -68,19 +70,33 @@ type ConfigByType struct {
 	other  []string
 }
 
+func getOptimalConcurrency() int {
+	numCPU := runtime.NumCPU()
+	return numCPU * 50
+}
+
+func getOptimalFetchPool() int {
+	numCPU := runtime.NumCPU()
+	return numCPU * 8
+}
+
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	for {
-		choice := showArrowMenu()
+		choice := showMenuBeautiful()
 		if choice == EXIT {
 			clearScreen()
-			fmt.Println("\n👋 خدا حافظ!\n")
+			fmt.Println()
+			printBox("Goodbye! 👋", "center")
+			fmt.Println()
 			break
 		}
 
 		cfg := Config{
 			inFile:      "subs.txt",
 			outFile:     "good.txt",
-			concurrency: 100, // بیشتر برای سرعت بیشتر
+			concurrency: getOptimalConcurrency(),
 			timeout:     5 * time.Second,
 			verbose:     false,
 		}
@@ -96,48 +112,64 @@ func main() {
 			runInteractiveMode(&cfg)
 		}
 
-		fmt.Print("\n\nبرای ادامه Enter را فشار دهید...")
+		fmt.Print("\n")
+		fmt.Println("  Press ENTER to continue...")
 		bufio.NewReader(os.Stdin).ReadString('\n')
 	}
 }
 
 // ╔════════════════════════════════════════════════════════════════╗
-// ║                    ARROW KEY MENU                              ║
+// ║                    BEAUTIFUL MENU                              ║
 // ╚════════════════════════════════════════════════════════════════╝
 
-func showArrowMenu() int {
+func showMenuBeautiful() int {
 	clearScreen()
 
-	menuItems := []string{
-		"⚡ Quick Test      - تست سریع (6 هاست نمونه)",
-		"📦 Full Test       - تست کامل (فایل subscription)",
-		"⚙️  Benchmark Mode  - مقایسه عملکرد",
-		"🎮 Interactive     - حالت تعاملی کامل",
-		"❌ Exit            - خروج",
+	menuItems := []struct {
+		icon  string
+		title string
+		desc  string
+	}{
+		{"⚡", "Quick Test", "Fast test (6 sample hosts)"},
+		{"📦", "Full Test", "Complete test (subscription file)"},
+		{"⚙️ ", "Benchmark", "Performance comparison"},
+		{"🎮", "Interactive", "Custom settings mode"},
+		{"❌", "Exit", "Exit application"},
 	}
 
 	selectedIndex := 0
 
 	for {
 		clearScreen()
-		fmt.Println("╔════════════════════════════════════════════════════════════════╗")
-		fmt.Println("║            🔍 برنامه تست اتصال سرورها (ULTIMATE) 🔍          ║")
-		fmt.Println("╚════════════════════════════════════════════════════════════════╝\n")
 
-		fmt.Println("📋 انتخاب حالت تست (↑ ↓ + Enter):\n")
+		// Header
+		fmt.Println("  ╔═══════════════════════════════════════════════════════════════╗")
+		fmt.Println("  ║                                                               ║")
+		fmt.Println("  ║      🔥 CONNECTIVITY TESTER - MAX PERFORMANCE (FINAL) 🔥     ║")
+		fmt.Println("  ║                                                               ║")
+		fmt.Printf("  ║   CPU Cores: %-2d  │  Workers: %-4d  │  Fetch Pool: %-2d  ║\n",
+			runtime.NumCPU(), getOptimalConcurrency(), getOptimalFetchPool())
+		fmt.Println("  ║                                                               ║")
+		fmt.Println("  ╚═══════════════════════════════════════════════════════════════╝")
+
+		fmt.Println()
+		fmt.Println("  SELECT TEST MODE (↑ ↓ + ENTER):")
+		fmt.Println()
 
 		for i, item := range menuItems {
 			if i == selectedIndex {
-				fmt.Printf("  ➜ %s  ◄──\n", item)
+				fmt.Printf("  ┏━ %s  %-12s - %s  ◄── SELECTED\n", item.icon, item.title, item.desc)
+				fmt.Printf("  ┃\n")
 			} else {
-				fmt.Printf("    %s\n", item)
+				fmt.Printf("  ┃  %s  %-12s - %s\n", item.icon, item.title, item.desc)
 			}
 		}
 
-		fmt.Println("\n  ⌨️  فلش‌های بالا/پایین برای انتخاب")
-		fmt.Println("  ⌨️  Enter برای تأیید")
+		fmt.Println()
+		fmt.Println("  ⌨️  KEYBOARD:")
+		fmt.Println("     ↑ ↓  : Select    │  ENTER : Confirm    │  Q : Quit")
+		fmt.Println()
 
-		// خواندن input بدون نیاز Enter فوری
 		key := readArrowKey()
 
 		if key == "up" {
@@ -152,11 +184,25 @@ func showArrowMenu() int {
 	}
 }
 
-// readArrowKey - خواندن کلیدهای جهت‌نما
+func printBox(text string, align string) {
+	width := len(text) + 4
+	fmt.Print("  ")
+	for i := 0; i < width; i++ {
+		fmt.Print("═")
+	}
+	fmt.Println()
+	fmt.Printf("  ║ %s ║\n", text)
+	fmt.Print("  ")
+	for i := 0; i < width; i++ {
+		fmt.Print("═")
+	}
+	fmt.Println()
+}
+
+// readArrowKey - Read arrow keys
 func readArrowKey() string {
 	oldState, err := term.MakeRaw(int(syscall.Stdin))
 	if err != nil {
-		// Fallback برای سیستم‌های بدون support terminal
 		return readSimpleInput()
 	}
 	defer term.Restore(int(syscall.Stdin), oldState)
@@ -166,17 +212,16 @@ func readArrowKey() string {
 
 	if n == 1 {
 		if b[0] == 13 {
-			return "enter" // Enter
+			return "enter"
 		} else if b[0] == 'q' || b[0] == 'Q' {
-			return "q" // Quit
+			return "q"
 		}
 	} else if n == 3 {
-		// ANSI escape sequence
 		if b[0] == 27 && b[1] == 91 {
 			if b[2] == 65 {
-				return "up" // ↑
+				return "up"
 			} else if b[2] == 66 {
-				return "down" // ↓
+				return "down"
 			}
 		}
 	}
@@ -184,7 +229,6 @@ func readArrowKey() string {
 	return ""
 }
 
-// readSimpleInput - Fallback برای سیستم‌های بدون terminal
 func readSimpleInput() string {
 	reader := bufio.NewReader(os.Stdin)
 	input, _ := reader.ReadString('\n')
@@ -200,10 +244,12 @@ func readSimpleInput() string {
 }
 
 // ╔════════════════════════════════════════════════════════════════╗
-// ║                      PROGRESS BAR                              ║
+// ║              FIXED PROGRESS BAR                               ║
 // ╚════════════════════════════════════════════════════════════════╝
 
-func showProgressBar(current, total int64) {
+var lastProgressLength int = 0
+
+func showProgressBar(current, total int64, speed float64) {
 	if total == 0 {
 		return
 	}
@@ -212,15 +258,30 @@ func showProgressBar(current, total int64) {
 	filled := int(percent / 2)
 	empty := 50 - filled
 
-	// سرعت‌تر: فقط نمایش یک‌بار
-	fmt.Printf("\r[")
-	for i := 0; i < filled; i++ {
-		fmt.Print("█")
+	// Build progress string
+	progressStr := fmt.Sprintf(
+		"  [%s%s] %5.1f%% (%d/%d) | %.1f tests/sec",
+		strings.Repeat("█", filled),
+		strings.Repeat("░", empty),
+		percent,
+		current,
+		total,
+		speed)
+
+	// Pad with spaces to clear previous content
+	if len(progressStr) < lastProgressLength {
+		progressStr += strings.Repeat(" ", lastProgressLength-len(progressStr))
 	}
-	for i := 0; i < empty; i++ {
-		fmt.Print("░")
+	lastProgressLength = len(progressStr)
+
+	fmt.Printf("\r%s", progressStr)
+}
+
+func clearProgressBar() {
+	if lastProgressLength > 0 {
+		fmt.Printf("\r%s\r", strings.Repeat(" ", lastProgressLength))
+		lastProgressLength = 0
 	}
-	fmt.Printf("] %.1f%% (%d/%d)   ", percent, current, total)
 }
 
 // ╔════════════════════════════════════════════════════════════════╗
@@ -229,9 +290,8 @@ func showProgressBar(current, total int64) {
 
 func runQuickTest(cfg *Config) {
 	clearScreen()
-	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                   ⚡ QUICK TEST MODE ⚡                         ║")
-	fmt.Println("╚════════════════════════════════════════════════════════════════╝\n")
+	fmt.Println()
+	printBox("⚡ QUICK TEST MODE", "center")
 
 	testCases := []struct {
 		name string
@@ -242,13 +302,15 @@ func runQuickTest(cfg *Config) {
 		{"Cloudflare DNS", "1.1.1.1", "53"},
 		{"GitHub", "github.com", "443"},
 		{"AWS", "aws.amazon.com", "443"},
-		{"Localhost HTTP", "127.0.0.1", "80"},
-		{"Localhost HTTPS", "127.0.0.1", "443"},
+		{"HTTP Localhost", "127.0.0.1", "80"},
+		{"HTTPS Localhost", "127.0.0.1", "443"},
 	}
 
-	fmt.Printf("🔄 تعداد تست‌ها: %d\n", len(testCases))
-	fmt.Printf("👷 تعداد Worker: %d (بیشتر برای سرعت)\n", cfg.concurrency)
-	fmt.Printf("⏱️  Timeout: %v\n\n", cfg.timeout)
+	fmt.Println()
+	fmt.Printf("  🔄 Total tests:      %d\n", len(testCases))
+	fmt.Printf("  👷 Worker count:     %d (CPU: %d cores)\n", cfg.concurrency, runtime.NumCPU())
+	fmt.Printf("  ⏱️  Timeout:          %v\n", cfg.timeout)
+	fmt.Println()
 
 	_ = runTestsWithProgress(cfg, testCases)
 }
@@ -259,23 +321,27 @@ func runQuickTest(cfg *Config) {
 
 func runFullTest(cfg *Config) {
 	clearScreen()
-	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                   📦 FULL TEST MODE 📦                         ║")
-	fmt.Println("╚════════════════════════════════════════════════════════════════╝\n")
+	fmt.Println()
+	printBox("📦 FULL TEST MODE", "center")
 
 	lines, err := readLines(cfg.inFile)
 	if err != nil {
-		fmt.Printf("❌ خطا: %v\n", err)
+		fmt.Printf("  ❌ Error: %v\n", err)
 		return
 	}
 
-	fmt.Printf("📥 %d URL لود شد\n", len(lines))
-	fmt.Println("⏳ در حال دریافت لینک‌ها...\n")
+	fmt.Println()
+	fmt.Printf("  📥 URLs loaded:      %d\n", len(lines))
+	fmt.Printf("  👷 Worker count:     %d (CPU: %d cores)\n", cfg.concurrency, runtime.NumCPU())
+	fmt.Printf("  📡 Fetch pool:       %d\n", getOptimalFetchPool())
+	fmt.Println()
+	fmt.Println("  ⏳ Fetching links...")
 
 	allLinks := fetchAndExtractLinksConcurrent(lines)
 
-	fmt.Printf("✓ %d لینک منحصر به‌فرد یافت شد\n\n", len(allLinks))
-	fmt.Println("🔍 در حال تست اتصال‌ها...\n")
+	clearProgressBar()
+	fmt.Printf("  ✓ Unique links:     %d\n\n", len(allLinks))
+	fmt.Println("  🔍 Testing connections...\n")
 
 	testCases := make([]struct {
 		name string
@@ -304,11 +370,17 @@ func runFullTest(cfg *Config) {
 
 func runBenchmarkMode(cfg *Config) {
 	clearScreen()
-	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                  ⚙️  BENCHMARK MODE ⚙️                          ║")
-	fmt.Println("╚════════════════════════════════════════════════════════════════╝\n")
+	fmt.Println()
+	printBox("⚙️  BENCHMARK MODE", "center")
 
-	concurrencyLevels := []int{10, 25, 50, 100, 200}
+	concurrencyLevels := []int{
+		runtime.NumCPU() * 10,
+		runtime.NumCPU() * 25,
+		runtime.NumCPU() * 50,
+		runtime.NumCPU() * 75,
+		runtime.NumCPU() * 100,
+	}
+
 	testCases := []struct {
 		name string
 		host string
@@ -319,10 +391,14 @@ func runBenchmarkMode(cfg *Config) {
 		{"Test-3", "github.com", "443"},
 		{"Test-4", "aws.amazon.com", "443"},
 		{"Test-5", "google.com", "443"},
+		{"Test-6", "cloudflare.com", "443"},
+		{"Test-7", "8.8.4.4", "53"},
+		{"Test-8", "1.0.0.1", "53"},
 	}
 
-	fmt.Println("Concurrency | Duration | Tests/Sec | Success Rate")
-	fmt.Println(strings.Repeat("─", 60))
+	fmt.Println()
+	fmt.Println("  Concurrency     Duration     Tests/Sec    Success Rate")
+	fmt.Println("  " + strings.Repeat("─", 55))
 
 	for _, concLevel := range concurrencyLevels {
 		cfg.concurrency = concLevel
@@ -334,11 +410,12 @@ func runBenchmarkMode(cfg *Config) {
 		duration := time.Since(start)
 		success := atomic.LoadInt64(&stats.success)
 		percent := float64(success) * 100 / float64(len(testCases))
+		testsPerSec := float64(len(testCases)) / duration.Seconds()
 
-		fmt.Printf("%-11d | %8v | %9.2f | %.1f%%\n",
+		fmt.Printf("  %-15d %-12v %-11.2f %.1f%%\n",
 			concLevel,
 			duration,
-			float64(len(testCases))/duration.Seconds(),
+			testsPerSec,
 			percent)
 	}
 }
@@ -349,25 +426,25 @@ func runBenchmarkMode(cfg *Config) {
 
 func runInteractiveMode(cfg *Config) {
 	clearScreen()
-	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                  🎮 INTERACTIVE MODE 🎮                        ║")
-	fmt.Println("╚════════════════════════════════════════════════════════════════╝\n")
+	fmt.Println()
+	printBox("🎮 INTERACTIVE MODE", "center")
 
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Print("📁 فایل ورودی (default: subs.txt): ")
+	fmt.Println()
+	fmt.Print("  📁 Input file (default: subs.txt): ")
 	input, _ := reader.ReadString('\n')
 	if strings.TrimSpace(input) != "" {
 		cfg.inFile = strings.TrimSpace(input)
 	}
 
-	fmt.Print("👷 تعداد Worker (default: 100): ")
+	fmt.Print("  👷 Worker count (default: optimal): ")
 	input, _ = reader.ReadString('\n')
 	if strings.TrimSpace(input) != "" {
 		fmt.Sscanf(strings.TrimSpace(input), "%d", &cfg.concurrency)
 	}
 
-	fmt.Print("⏱️  Timeout بر حسب ثانیه (default: 5): ")
+	fmt.Print("  ⏱️  Timeout in seconds (default: 5): ")
 	input, _ = reader.ReadString('\n')
 	if strings.TrimSpace(input) != "" {
 		var timeoutSec int
@@ -375,14 +452,15 @@ func runInteractiveMode(cfg *Config) {
 		cfg.timeout = time.Duration(timeoutSec) * time.Second
 	}
 
-	fmt.Println("\n✓ تنظیمات:")
-	fmt.Printf("  📁 فایل: %s\n", cfg.inFile)
-	fmt.Printf("  👷 Workers: %d\n", cfg.concurrency)
-	fmt.Printf("  ⏱️  Timeout: %v\n\n", cfg.timeout)
+	fmt.Println()
+	fmt.Println("  ✓ Settings:")
+	fmt.Printf("    📁 File: %s\n", cfg.inFile)
+	fmt.Printf("    👷 Workers: %d\n", cfg.concurrency)
+	fmt.Printf("    ⏱️  Timeout: %v\n\n", cfg.timeout)
 
 	lines, err := readLines(cfg.inFile)
 	if err != nil {
-		fmt.Printf("❌ خطا: %v\n", err)
+		fmt.Printf("  ❌ Error: %v\n", err)
 		return
 	}
 
@@ -410,7 +488,7 @@ func runInteractiveMode(cfg *Config) {
 }
 
 // ╔════════════════════════════════════════════════════════════════╗
-// ║            TEST EXECUTION WITH PROGRESS (FASTER)               ║
+// ║         TEST EXECUTION WITH FIXED PROGRESS BAR                 ║
 // ╚════════════════════════════════════════════════════════════════╝
 
 func runTestsWithProgress(cfg *Config, testCases []struct {
@@ -427,14 +505,12 @@ func runTestsWithProgress(cfg *Config, testCases []struct {
 		name string
 		host string
 		port string
-	}, len(testCases)*2) // Buffer بیشتر
+	}, len(testCases)*4)
 
-	results := make(chan TestResult, len(testCases)*2)
+	results := make(chan TestResult, len(testCases)*4)
 	var wg sync.WaitGroup
 
-	// شروع بیشتر Workers
-	numWorkers := cfg.concurrency
-	for w := 0; w < numWorkers; w++ {
+	for w := 0; w < cfg.concurrency; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -446,21 +522,22 @@ func runTestsWithProgress(cfg *Config, testCases []struct {
 		}()
 	}
 
-	// ارسال کارها (بدون Goroutine جداگانه برای سرعت)
 	for _, tc := range testCases {
 		jobs <- tc
 	}
 	close(jobs)
 
-	// جمع‌آوری نتایج
 	var allResults []TestResult
 	processedCount := int64(0)
 	lastUpdate := int64(0)
+	startTime := time.Now()
 
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
+
+	fmt.Println()
 
 	for result := range results {
 		processedCount++
@@ -479,14 +556,16 @@ func runTestsWithProgress(cfg *Config, testCases []struct {
 
 		allResults = append(allResults, result)
 
-		// نمایش هر 5 عنصر برای سرعت
-		if processedCount-lastUpdate >= 5 || processedCount == int64(len(testCases)) {
-			showProgressBar(processedCount, int64(len(testCases)))
+		if processedCount-lastUpdate >= 1 || processedCount == int64(len(testCases)) {
+			elapsed := time.Since(startTime).Seconds()
+			speed := float64(processedCount) / elapsed
+			showProgressBar(processedCount, int64(len(testCases)), speed)
 			lastUpdate = processedCount
 		}
 	}
 
-	fmt.Println("\n")
+	clearProgressBar()
+	fmt.Println()
 	printSummary()
 
 	return allResults
@@ -532,22 +611,22 @@ func clearScreen() {
 }
 
 func printSummary() {
-	fmt.Println(strings.Repeat("═", 64))
-	fmt.Println("📊 خلاصه نتایج:")
-	fmt.Printf("  کل تست‌ها:     %d\n", stats.total)
-	fmt.Printf("  موفق:          %d ✓\n", atomic.LoadInt64(&stats.success))
-	fmt.Printf("  ناموفق:        %d ❌\n", atomic.LoadInt64(&stats.failed))
+	fmt.Println("  " + strings.Repeat("═", 60))
+	fmt.Println("  📊 TEST RESULTS SUMMARY:")
+	fmt.Printf("    Total Tests:       %d\n", stats.total)
+	fmt.Printf("    ✓ Successful:      %d\n", atomic.LoadInt64(&stats.success))
+	fmt.Printf("    ❌ Failed:         %d\n", atomic.LoadInt64(&stats.failed))
 
 	if stats.total > 0 {
 		percent := float64(atomic.LoadInt64(&stats.success)) * 100 / float64(stats.total)
-		fmt.Printf("  درصد موفقیت:   %.1f%%\n", percent)
+		fmt.Printf("    Success Rate:      %.1f%%\n", percent)
 	}
 
 	if stats.minLatency > 0 {
-		fmt.Printf("  Min Latency:   %v\n", stats.minLatency)
-		fmt.Printf("  Max Latency:   %v\n", stats.maxLatency)
+		fmt.Printf("    🟢 Min Latency:    %v\n", stats.minLatency)
+		fmt.Printf("    🔴 Max Latency:    %v\n", stats.maxLatency)
 	}
-	fmt.Println(strings.Repeat("═", 64))
+	fmt.Println("  " + strings.Repeat("═", 60))
 }
 
 func readLines(path string) ([]string, error) {
@@ -568,14 +647,13 @@ func readLines(path string) ([]string, error) {
 	return lines, scanner.Err()
 }
 
-// fetchAndExtractLinksConcurrent - دریافت سریع‌تر
 func fetchAndExtractLinksConcurrent(urls []string) []string {
 	var allLinks []string
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	// Worker Pool بیشتر
-	sem := make(chan struct{}, 32) // 32 concurrent fetches
+	fetchPool := getOptimalFetchPool()
+	sem := make(chan struct{}, fetchPool)
 
 	for _, u := range urls {
 		wg.Add(1)
@@ -731,7 +809,8 @@ func saveConfigsByType(results []TestResult) {
 		}
 	}
 
-	fmt.Println("\n💾 ذخیره فایل‌ها...\n")
+	fmt.Println()
+	fmt.Println("  💾 SAVING FILES...\n")
 
 	if len(configs.vless) > 0 {
 		saveToFile("bisub_vless.txt", configs.vless)
@@ -756,36 +835,36 @@ func saveConfigsByType(results []TestResult) {
 
 	saveToFile("bisub.txt", allConfigs)
 
-	fmt.Printf("\n✓ کل: %d کانفیگ\n", len(allConfigs))
-	fmt.Printf("  • VLESS: %d\n", len(configs.vless))
-	fmt.Printf("  • VMESS: %d\n", len(configs.vmess))
-	fmt.Printf("  • SS: %d\n", len(configs.ss))
-	fmt.Printf("  • Trojan: %d\n", len(configs.trojan))
-	fmt.Printf("  • Other: %d\n\n", len(configs.other))
+	fmt.Printf("\n  ✓ TOTAL: %d configs\n", len(allConfigs))
+	fmt.Printf("    • VLESS:  %d\n", len(configs.vless))
+	fmt.Printf("    • VMESS:  %d\n", len(configs.vmess))
+	fmt.Printf("    • SS:     %d\n", len(configs.ss))
+	fmt.Printf("    • Trojan: %d\n", len(configs.trojan))
+	fmt.Printf("    • Other:  %d\n\n", len(configs.other))
 
-	fmt.Println("📁 فایل‌های ذخیره شده:")
-	fmt.Println("  • bisub.txt (همه کانفیگ‌ها)")
+	fmt.Println("  📁 FILES SAVED:")
+	fmt.Println("    • bisub.txt")
 	if len(configs.vless) > 0 {
-		fmt.Println("  • bisub_vless.txt")
+		fmt.Println("    • bisub_vless.txt")
 	}
 	if len(configs.vmess) > 0 {
-		fmt.Println("  • bisub_vmess.txt")
+		fmt.Println("    • bisub_vmess.txt")
 	}
 	if len(configs.ss) > 0 {
-		fmt.Println("  • bisub_ss.txt")
+		fmt.Println("    • bisub_ss.txt")
 	}
 	if len(configs.trojan) > 0 {
-		fmt.Println("  • bisub_trojan.txt")
+		fmt.Println("    • bisub_trojan.txt")
 	}
 	if len(configs.other) > 0 {
-		fmt.Println("  • bisub_other.txt")
+		fmt.Println("    • bisub_other.txt")
 	}
 }
 
 func saveToFile(filename string, configs []string) {
 	f, err := os.Create(filename)
 	if err != nil {
-		fmt.Printf("❌ خطا در ایجاد %s: %v\n", filename, err)
+		fmt.Printf("  ❌ Error creating %s: %v\n", filename, err)
 		return
 	}
 	defer f.Close()
@@ -794,5 +873,5 @@ func saveToFile(filename string, configs []string) {
 		fmt.Fprintf(f, "%s\n", config)
 	}
 
-	fmt.Printf("✓ %s: %d کانفیگ\n", filename, len(configs))
+	fmt.Printf("  ✓ %s: %d configs\n", filename, len(configs))
 }
