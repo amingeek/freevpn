@@ -13,24 +13,25 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"runtime"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
-	"golang.org/x/term"
 	"syscall"
+	"time"
+
+	"golang.org/x/term"
 )
 
 const (
-	MAIN_MENU       = 0
-	QUICK_TEST      = 1
-	FULL_TEST       = 2
-	BENCH_MODE      = 3
-	INTERACTIVE     = 4
-	GIT_PUSH        = 5
-	EXIT            = 6
+	MAIN_MENU   = 0
+	QUICK_TEST  = 1
+	FULL_TEST   = 2
+	BENCH_MODE  = 3
+	INTERACTIVE = 4
+	GIT_PUSH    = 5
+	EXIT        = 6
 )
 
 type Config struct {
@@ -262,7 +263,7 @@ func handleGitPush() {
 
 	// ===== git push (WITH TIMEOUT & ERROR HANDLING) =====
 	fmt.Print("  ⏳ Running: git push")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 	defer cancel()
 
 	cmd = exec.CommandContext(ctx, "git", "push")
